@@ -26,6 +26,10 @@ function App() {
   // #12 Sound Themes
   const [soundTheme, setSoundTheme] = useState(() => localStorage.getItem('soundTheme') || 'chime')
 
+  // #20 Smart Pause - auto-pause if user inactive
+  const [smartPause, setSmartPause] = useState(() => localStorage.getItem('smartPause') === 'true')
+  const lastActivityRef = useRef(Date.now())
+
   // Timers
   const [postureTime, setPostureTime] = useState(parseInt(postureInterval) * 60)
   const [eyeTime, setEyeTime] = useState(parseInt(eyeInterval) * 60)
@@ -60,6 +64,14 @@ function App() {
   // #18 Setup Guide
   const [showSetup, setShowSetup] = useState(() =>!localStorage.getItem('hasSetup'))
 
+  // #21 Custom Stretches
+  const [customStretches, setCustomStretches] = useState(() => {
+    const saved = localStorage.getItem('customStretches')
+    return saved? JSON.parse(saved) : []
+  })
+  const [showAddStretch, setShowAddStretch] = useState(false)
+  const [newStretch, setNewStretch] = useState({ name: '', instruction: '', duration: 10 })
+
   // #13 Daily Posture Tip
   const tips = [
     "Squeeze shoulder blades together every hour",
@@ -78,6 +90,8 @@ function App() {
     return tips[today % tips.length]
   })
 
+  const allStretches = [...stretches,...customStretches]
+
   // #4 Pause on Screen Lock
   useEffect(() => {
     const handleVisibility = () => {
@@ -86,6 +100,29 @@ function App() {
     document.addEventListener('visibilitychange', handleVisibility)
     return () => document.removeEventListener('visibilitychange', handleVisibility)
   }, [isRunning])
+
+  // #20 Smart Pause - detect user activity
+  useEffect(() => {
+    if (!smartPause) return
+    const updateActivity = () => { lastActivityRef.current = Date.now() }
+    window.addEventListener('mousemove', updateActivity)
+    window.addEventListener('keydown', updateActivity)
+    window.addEventListener('click', updateActivity)
+
+    const checkInactivity = setInterval(() => {
+      if (isRunning && Date.now() - lastActivityRef.current > 5 * 60 * 1000) {
+        setIsRunning(false)
+        notifyUser('Paused', 'No activity detected for 5 min')
+      }
+    }, 30000)
+
+    return () => {
+      window.removeEventListener('mousemove', updateActivity)
+      window.removeEventListener('keydown', updateActivity)
+      window.removeEventListener('click', updateActivity)
+      clearInterval(checkInactivity)
+    }
+  }, [smartPause, isRunning])
 
   // #2 Working Hours Check
   useEffect(() => {
@@ -118,6 +155,8 @@ function App() {
   useEffect(() => localStorage.setItem('endTime', endTime), [endTime])
   useEffect(() => localStorage.setItem('darkMode', darkMode), [darkMode])
   useEffect(() => localStorage.setItem('soundTheme', soundTheme), [soundTheme])
+  useEffect(() => localStorage.setItem('smartPause', smartPause), [smartPause])
+  useEffect(() => localStorage.setItem('customStretches', JSON.stringify(customStretches)), [customStretches])
   useEffect(() => document.body.className = darkMode? 'dark' : 'light', [darkMode])
 
   // #16 Streak + #17 Daily Reset
@@ -129,7 +168,6 @@ function App() {
       yesterday.setDate(yesterday.getDate() - 1)
       const yesterdayStr = yesterday.toLocaleDateString('en-US', { weekday: 'short' })
 
-      // Update streak
       if (completed > skipped && completed > 0) {
         setStreak(prev => {
           const newStreak = prev + 1
@@ -141,7 +179,6 @@ function App() {
         localStorage.setItem('streak', 0)
       }
 
-      // Update weekly chart
       setWeeklyData(prev => {
         const newData = {...prev }
         if (newData.labels.length >= 7) {
@@ -232,8 +269,14 @@ function App() {
     })
   }
 
+  const getRandomRoutineWithCustom = () => {
+    const pool = allStretches.length >= 3? allStretches : stretches
+    const shuffled = [...pool].sort(() => 0.5 - Math.random())
+    return shuffled.slice(0, 3)
+  }
+
   const triggerBreak = () => {
-    setCurrentRoutine(getRandomRoutine())
+    setCurrentRoutine(getRandomRoutineWithCustom())
     setCurrentStretchIndex(0)
     setShowBreakModal(true)
     playSound()
@@ -298,6 +341,41 @@ function App() {
     a.href = url
     a.download = 'posture-stats.csv'
     a.click()
+  }
+
+  // #19 Calendar Sync - Generate.ics file
+  const downloadCalendar = () => {
+    const icsContent = `BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//Posture App//EN
+BEGIN:VEVENT
+SUMMARY:Posture Break
+DTSTART:${new Date().toISOString().replace(/[-:]/g, '').split('.')[0]}Z
+DURATION:PT5M
+RRULE:FREQ=DAILY;BYHOUR=${startTime.split(':')[0]};BYMINUTE=${startTime.split(':')[1]};INTERVAL=${postureInterval}
+DESCRIPTION:Time for your posture stretch routine
+END:VEVENT
+END:VCALENDAR`
+    const blob = new Blob([icsContent], { type: 'text/calendar' })
+    const url = window.URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = 'posture-breaks.ics'
+    a.click()
+  }
+
+  // #21 Add Custom Stretch
+  const addCustomStretch = () => {
+    if (newStretch.name && newStretch.instruction) {
+      setCustomStretches([...customStretches, {
+       ...newStretch,
+        id: Date.now(),
+        gif: 'https://media.giphy.com/media/3o7btPCcdNniyf0ArS/giphy.gif',
+        category: 'Custom'
+      }])
+      setNewStretch({ name: '', instruction: '', duration: 10 })
+      setShowAddStretch(false)
+    }
   }
 
   const completeSetup = () => {
@@ -381,6 +459,10 @@ function App() {
               <option value="beep">Beep</option>
             </select>
           </label>
+          <label className="checkbox-label">
+            <input type="checkbox" checked={smartPause} onChange={e => setSmartPause(e.target.checked)} />
+            Smart Pause if inactive 5min
+          </label>
         </div>
       )}
 
@@ -404,6 +486,8 @@ function App() {
         <button onClick={() => setShowSetup(true)} className="setup">Setup Guide</button>
         <button onClick={() => setShowStats(!showStats)} className="stats-btn">Weekly Stats</button>
         <button onClick={exportCSV} className="export-btn">Export CSV</button>
+        <button onClick={downloadCalendar} className="export-btn">Add to Calendar</button>
+        <button onClick={() => setShowAddStretch(true)} className="export-btn">+ Custom Stretch</button>
       </div>
 
       {showStats && (
@@ -421,6 +505,39 @@ function App() {
             <p>3. Choose how often you want breaks</p>
             <p>4. Click Start when ready</p>
             <button onClick={completeSetup} className="next-btn">Enable Notifications & Start</button>
+          </div>
+        </div>
+      )}
+
+      {showAddStretch && (
+        <div className="break-modal">
+          <div className="break-content">
+            <h2>Add Custom Stretch</h2>
+            <input
+              type="text"
+              placeholder="Stretch name"
+              value={newStretch.name}
+              onChange={e => setNewStretch({...newStretch, name: e.target.value})}
+              className="stretch-input"
+            />
+            <textarea
+              placeholder="Instructions"
+              value={newStretch.instruction}
+              onChange={e => setNewStretch({...newStretch, instruction: e.target.value})}
+              className="stretch-input"
+            />
+            <label>Duration (seconds):
+              <input
+                type="number"
+                value={newStretch.duration}
+                onChange={e => setNewStretch({...newStretch, duration: parseInt(e.target.value)})}
+                className="stretch-input"
+              />
+            </label>
+            <div className="break-controls">
+              <button onClick={addCustomStretch} className="next-btn">Save Stretch</button>
+              <button onClick={() => setShowAddStretch(false)} className="skip-btn">Cancel</button>
+            </div>
           </div>
         </div>
       )}
