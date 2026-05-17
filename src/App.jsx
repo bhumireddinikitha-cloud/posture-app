@@ -347,8 +347,10 @@ END:VCALENDAR`
 
   return (
     <div className={`app ${darkMode? 'dark' : 'light'}`}>
-      <div className="header">
-        <h1>Posture & Break Reminder</h1>
+      <div className="header" style={{display: 'flex', justifyContent: 'space-between', width: '100%', maxWidth: '600px', marginBottom: '2rem'}}>
+        <h1 style={{fontSize: '1.8rem', margin: 0, color: darkMode? '#f9fafb' : '#111827'}}>
+          Posture & Break Reminder
+        </h1>
         <button
           onClick={() => setDarkMode(!darkMode)}
           className="theme-toggle"
@@ -495,6 +497,3 @@ END:VCALENDAR`
       )}
     </div>
   )
-}
-
-export default App
