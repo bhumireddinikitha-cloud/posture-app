@@ -1,563 +1,495 @@
 import { useState, useEffect, useRef } from 'react'
-import { stretches, getRandomRoutine } from './stretches'
-import { Chart as ChartJS, CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend } from 'chart.js'
 import { Bar } from 'react-chartjs-2'
+import { Chart as ChartJS, CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend } from 'chart.js'
+import { stretches } from './stretches'
 import './App.css'
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend)
 
 function App() {
-  // #1 Customizable Intervals
-  const [postureInterval, setPostureInterval] = useState(() =>
-    localStorage.getItem('postureInterval') || '30'
-  )
-  const [eyeInterval, setEyeInterval] = useState(() =>
-    localStorage.getItem('eyeInterval') || '20'
-  )
-
-  // #2 Working Hours
-  const [startTime, setStartTime] = useState(() => localStorage.getItem('startTime') || '09:00')
-  const [endTime, setEndTime] = useState(() => localStorage.getItem('endTime') || '17:00')
-  const [isWithinHours, setIsWithinHours] = useState(true)
-
-  // #3 Dark Mode
-  const [darkMode, setDarkMode] = useState(() => localStorage.getItem('darkMode')!== 'false')
-
-  // #12 Sound Themes
-  const [soundTheme, setSoundTheme] = useState(() => localStorage.getItem('soundTheme') || 'chime')
-
-  // #20 Smart Pause - auto-pause if user inactive
-  const [smartPause, setSmartPause] = useState(() => localStorage.getItem('smartPause') === 'true')
-  const lastActivityRef = useRef(Date.now())
+  // Core state
+  const [postureInterval, setPostureInterval] = useState(30)
+  const [eyeInterval, setEyeInterval] = useState(20)
+  const [workingHours, setWorkingHours] = useState({ start: '09:00', end: '17:00' })
+  const [soundTheme, setSoundTheme] = useState('chime')
+  const [smartPause, setSmartPause] = useState(true)
+  const [darkMode, setDarkMode] = useState(false)
+  const [customStretches, setCustomStretches] = useState([])
 
   // Timers
-  const [postureTime, setPostureTime] = useState(parseInt(postureInterval) * 60)
-  const [eyeTime, setEyeTime] = useState(parseInt(eyeInterval) * 60)
+  const [postureTime, setPostureTime] = useState(postureInterval * 60)
+  const [eyeTime, setEyeTime] = useState(eyeInterval * 60)
   const [isRunning, setIsRunning] = useState(false)
 
-  // #14, #15 Compliance Tracking
-  const [completed, setCompleted] = useState(() =>
-    parseInt(localStorage.getItem('completed') || '0')
-  )
-  const [skipped, setSkipped] = useState(() =>
-    parseInt(localStorage.getItem('skipped') || '0')
-  )
-  const [streak, setStreak] = useState(() => parseInt(localStorage.getItem('streak') || '0'))
-
-  // #17 Weekly Stats
-  const [weeklyData, setWeeklyData] = useState(() => {
-    const saved = localStorage.getItem('weeklyData')
-    return saved? JSON.parse(saved) : { labels: [], completed: [], skipped: [] }
-  })
-
-  // #5 Snooze
-  const [isSnoozed, setIsSnoozed] = useState(false)
-  const [snoozeTimeLeft, setSnoozeTimeLeft] = useState(0)
-
-  // #7 Stretch Modal State
+  // UI state
   const [showBreakModal, setShowBreakModal] = useState(false)
-  const [currentRoutine, setCurrentRoutine] = useState([])
-  const [currentStretchIndex, setCurrentStretchIndex] = useState(0)
-  const [showStats, setShowStats] = useState(false)
+  const [currentStretch, setCurrentStretch] = useState(0)
   const [showSettings, setShowSettings] = useState(false)
+  const [showStats, setShowStats] = useState(false)
+  const [showSetup, setShowSetup] = useState(false)
+  const [showCustomForm, setShowCustomForm] = useState(false)
 
-  // #18 Setup Guide
-  const [showSetup, setShowSetup] = useState(() =>!localStorage.getItem('hasSetup'))
+  // Stats
+  const [stats, setStats] = useState({ completed: 0, skipped: 0, streak: 0 })
+  const [weeklyData, setWeeklyData] = useState([])
+  const [complianceScore, setComplianceScore] = useState(100)
+  const [lastActiveDate, setLastActiveDate] = useState(new Date().toDateString())
 
-  // #21 Custom Stretches
-  const [customStretches, setCustomStretches] = useState(() => {
-    const saved = localStorage.getItem('customStretches')
-    return saved? JSON.parse(saved) : []
-  })
-  const [showAddStretch, setShowAddStretch] = useState(false)
-  const [newStretch, setNewStretch] = useState({ name: '', instruction: '', duration: 10 })
+  // Refs
+  const postureRef = useRef(null)
+  const eyeRef = useRef(null)
+  const lastActiveRef = useRef(Date.now())
+  const audioRef = useRef(null)
 
-  // #13 Daily Posture Tip
+  // Daily tips
   const tips = [
-    "Squeeze shoulder blades together every hour",
-    "Keep screen at arm's length away",
+    "Keep monitor at arm's length and top at eye level",
     "Feet flat on floor, knees at 90 degrees",
-    "Top of monitor at eye level",
-    "Take a deep breath and roll shoulders back",
-    "Sit back in chair so back is supported",
-    "Elbows bent at 90 degrees when typing",
     "Avoid phone between ear and shoulder",
-    "Stand up and reach for ceiling every hour",
-    "Check: ears over shoulders over hips"
+    "Stand up and move every 30 minutes",
+    "Blink often to prevent dry eyes",
+    "Use a headset for long calls",
+    "Keep wrists straight while typing"
   ]
-  const [dailyTip] = useState(() => {
-    const today = new Date().getDate()
-    return tips[today % tips.length]
-  })
+  const [dailyTip] = useState(tips[Math.floor(Math.random() * tips.length)])
 
-  const allStretches = [...stretches,...customStretches]
-
-  // #4 Pause on Screen Lock
+  // Load from localStorage on mount
   useEffect(() => {
-    const handleVisibility = () => {
-      if (document.hidden && isRunning) setIsRunning(false)
+    const saved = localStorage.getItem('postureApp')
+    if (saved) {
+      const data = JSON.parse(saved)
+      setPostureInterval(data.postureInterval || 30)
+      setEyeInterval(data.eyeInterval || 20)
+      setWorkingHours(data.workingHours || { start: '09:00', end: '17:00' })
+      setSoundTheme(data.soundTheme || 'chime')
+      setSmartPause(data.smartPause!== false)
+      setDarkMode(data.darkMode || false)
+      setStats(data.stats || { completed: 0, skipped: 0, streak: 0 })
+      setWeeklyData(data.weeklyData || [])
+      setLastActiveDate(data.lastActiveDate || new Date().toDateString())
+      setCustomStretches(data.customStretches || [])
+    } else {
+      setShowSetup(true)
     }
-    document.addEventListener('visibilitychange', handleVisibility)
-    return () => document.removeEventListener('visibilitychange', handleVisibility)
-  }, [isRunning])
+  }, [])
 
-  // #20 Smart Pause - detect user activity
+  // Save to localStorage
   useEffect(() => {
-    if (!smartPause) return
-    const updateActivity = () => { lastActivityRef.current = Date.now() }
-    window.addEventListener('mousemove', updateActivity)
-    window.addEventListener('keydown', updateActivity)
-    window.addEventListener('click', updateActivity)
+    localStorage.setItem('postureApp', JSON.stringify({
+      postureInterval, eyeInterval, workingHours, soundTheme, smartPause, darkMode,
+      stats, weeklyData, lastActiveDate, customStretches
+    }))
+  }, [postureInterval, eyeInterval, workingHours, soundTheme, smartPause, darkMode, stats, weeklyData, lastActiveDate, customStretches])
 
-    const checkInactivity = setInterval(() => {
-      if (isRunning && Date.now() - lastActivityRef.current > 5 * 60 * 1000) {
-        setIsRunning(false)
-        notifyUser('Paused', 'No activity detected for 5 min')
-      }
-    }, 30000)
-
-    return () => {
-      window.removeEventListener('mousemove', updateActivity)
-      window.removeEventListener('keydown', updateActivity)
-      window.removeEventListener('click', updateActivity)
-      clearInterval(checkInactivity)
-    }
-  }, [smartPause, isRunning])
-
-  // #2 Working Hours Check
+  // Update timers when intervals change
   useEffect(() => {
-    const checkHours = () => {
-      const now = new Date()
-      const current = now.getHours() * 60 + now.getMinutes()
-      const start = parseInt(startTime.split(':')[0]) * 60 + parseInt(startTime.split(':')[1])
-      const end = parseInt(endTime.split(':')[0]) * 60 + parseInt(endTime.split(':')[1])
-      const within = current >= start && current <= end
-      setIsWithinHours(within)
-      if (!within && isRunning) setIsRunning(false)
-    }
-    checkHours()
-    const interval = setInterval(checkHours, 60000)
-    return () => clearInterval(interval)
-  }, [startTime, endTime, isRunning])
-
-  // Save settings
-  useEffect(() => {
-    localStorage.setItem('postureInterval', postureInterval)
-    setPostureTime(parseInt(postureInterval) * 60)
+    setPostureTime(postureInterval * 60)
   }, [postureInterval])
 
   useEffect(() => {
-    localStorage.setItem('eyeInterval', eyeInterval)
-    setEyeTime(parseInt(eyeInterval) * 60)
+    setEyeTime(eyeInterval * 60)
   }, [eyeInterval])
 
-  useEffect(() => localStorage.setItem('startTime', startTime), [startTime])
-  useEffect(() => localStorage.setItem('endTime', endTime), [endTime])
-  useEffect(() => localStorage.setItem('darkMode', darkMode), [darkMode])
-  useEffect(() => localStorage.setItem('soundTheme', soundTheme), [soundTheme])
-  useEffect(() => localStorage.setItem('smartPause', smartPause), [smartPause])
-  useEffect(() => localStorage.setItem('customStretches', JSON.stringify(customStretches)), [customStretches])
-  useEffect(() => document.body.className = darkMode? 'dark' : 'light', [darkMode])
+  // Check working hours
+  const isWorkingHours = () => {
+    const now = new Date()
+    const current = now.getHours() * 60 + now.getMinutes()
+    const [startH, startM] = workingHours.start.split(':').map(Number)
+    const [endH, endM] = workingHours.end.split(':').map(Number)
+    const start = startH * 60 + startM
+    const end = endH * 60 + endM
+    return current >= start && current <= end
+  }
 
-  // #16 Streak + #17 Daily Reset
+  // Smart pause - detect AFK
   useEffect(() => {
-    const today = new Date().toLocaleDateString('en-US', { weekday: 'short' })
-    const lastDate = localStorage.getItem('lastDate')
-    if (lastDate && lastDate!== today) {
-      const yesterday = new Date()
-      yesterday.setDate(yesterday.getDate() - 1)
-      const yesterdayStr = yesterday.toLocaleDateString('en-US', { weekday: 'short' })
-
-      if (completed > skipped && completed > 0) {
-        setStreak(prev => {
-          const newStreak = prev + 1
-          localStorage.setItem('streak', newStreak)
-          return newStreak
-        })
-      } else if (lastDate === yesterdayStr) {
-        setStreak(0)
-        localStorage.setItem('streak', 0)
-      }
-
-      setWeeklyData(prev => {
-        const newData = {...prev }
-        if (newData.labels.length >= 7) {
-          newData.labels.shift()
-          newData.completed.shift()
-          newData.skipped.shift()
-        }
-        newData.labels.push(lastDate)
-        newData.completed.push(completed)
-        newData.skipped.push(skipped)
-        localStorage.setItem('weeklyData', JSON.stringify(newData))
-        return newData
-      })
-
-      setCompleted(0)
-      setSkipped(0)
-      localStorage.setItem('completed', '0')
-      localStorage.setItem('skipped', '0')
+    const handleActivity = () => lastActiveRef.current = Date.now()
+    window.addEventListener('mousemove', handleActivity)
+    window.addEventListener('keydown', handleActivity)
+    return () => {
+      window.removeEventListener('mousemove', handleActivity)
+      window.removeEventListener('keydown', handleActivity)
     }
-    if (!lastDate) localStorage.setItem('lastDate', today)
   }, [])
 
   // Main timer logic
   useEffect(() => {
-    let interval
-    if (isRunning &&!isSnoozed &&!showBreakModal && isWithinHours) {
-      interval = setInterval(() => {
-        setPostureTime(prev => {
-          if (prev <= 1) {
-            triggerBreak()
-            return parseInt(postureInterval) * 60
-          }
-          return prev - 1
-        })
-        setEyeTime(prev => {
-          if (prev <= 1) {
-            notifyUser('Eye Break!', 'Look 20 feet away for 20 seconds')
-            playSound()
-            return parseInt(eyeInterval) * 60
-          }
-          return prev - 1
-        })
-      }, 1000)
-    }
-    return () => clearInterval(interval)
-  }, [isRunning, isSnoozed, showBreakModal, postureInterval, eyeInterval, isWithinHours])
+    if (!isRunning ||!isWorkingHours()) return
 
-  // Snooze countdown
+    const checkAFK = () => {
+      if (smartPause && Date.now() - lastActiveRef.current > 300000) return true // 5min
+      return false
+    }
+
+    postureRef.current = setInterval(() => {
+      if (checkAFK()) return
+      setPostureTime(prev => {
+        if (prev <= 1) {
+          triggerBreak('posture')
+          return postureInterval * 60
+        }
+        return prev - 1
+      })
+    }, 1000)
+
+    eyeRef.current = setInterval(() => {
+      if (checkAFK()) return
+      setEyeTime(prev => {
+        if (prev <= 1) {
+          triggerBreak('eye')
+          return eyeInterval * 60
+        }
+        return prev - 1
+      })
+    }, 1000)
+
+    return () => {
+      clearInterval(postureRef.current)
+      clearInterval(eyeRef.current)
+    }
+  }, [isRunning, postureInterval, eyeInterval, smartPause, workingHours])
+
+  // Streak calculation
   useEffect(() => {
-    let interval
-    if (isSnoozed && snoozeTimeLeft > 0) {
-      interval = setInterval(() => {
-        setSnoozeTimeLeft(prev => {
-          if (prev <= 1) {
-            setIsSnoozed(false)
-            return 0
-          }
-          return prev - 1
-        })
-      }, 1000)
-    }
-    return () => clearInterval(interval)
-  }, [isSnoozed, snoozeTimeLeft])
-
-  const playSound = () => {
-    const audio = new Audio()
-    if (soundTheme === 'chime') audio.src = 'https://assets.mixkit.co/sfx/preview/mixkit-software-interface-start-2574.mp3'
-    else if (soundTheme === 'bell') audio.src = 'https://assets.mixkit.co/sfx/preview/mixkit-bell-notification-933.mp3'
-    else audio.src = 'https://assets.mixkit.co/sfx/preview/mixkit-positive-interface-beep-221.mp3'
-    audio.play().catch(() => {})
-  }
-
-  const notifyUser = (title, body) => {
-    if (Notification.permission === 'granted') {
-      new Notification(title, { body, icon: '/vite.svg' })
-    }
-  }
-
-  const requestNotification = () => {
-    Notification.requestPermission().then(permission => {
-      if (permission === 'granted') {
-        playSound()
-        new Notification('Notifications enabled!', {
-          body: 'We\'ll remind you to stretch and rest your eyes',
-          icon: '/vite.svg'
-        })
+    const today = new Date().toDateString()
+    if (lastActiveDate!== today) {
+      const yesterday = new Date()
+      yesterday.setDate(yesterday.getDate() - 1)
+      if (lastActiveDate === yesterday.toDateString() && stats.completed > 0) {
+        setStats(s => ({...s, streak: s.streak + 1 }))
+      } else if (stats.completed === 0) {
+        setStats(s => ({...s, streak: 0 }))
       }
-    })
-  }
+      setLastActiveDate(today)
+      setStats(s => ({...s, completed: 0, skipped: 0 }))
+    }
+  }, [])
 
-  const getRandomRoutineWithCustom = () => {
-    const pool = allStretches.length >= 3? allStretches : stretches
-    const shuffled = [...pool].sort(() => 0.5 - Math.random())
-    return shuffled.slice(0, 3)
-  }
+  // Compliance score
+  useEffect(() => {
+    const total = stats.completed + stats.skipped
+    setComplianceScore(total === 0? 100 : Math.round((stats.completed / total) * 100))
+  }, [stats])
 
-  const triggerBreak = () => {
-    setCurrentRoutine(getRandomRoutineWithCustom())
-    setCurrentStretchIndex(0)
-    setShowBreakModal(true)
+  // Trigger break
+  const triggerBreak = (type) => {
     playSound()
-    notifyUser('Posture Break!', 'Time for your 3-stretch routine')
+    showNotification(type)
+    setShowBreakModal(true)
+    setCurrentStretch(0)
+    const allStretches = [...stretches,...customStretches]
+    if (allStretches.length > 0) {
+      speakText(allStretches[0].instruction)
+    }
   }
 
-  const speak = (text) => {
+  // Play sound
+  const playSound = () => {
+    const sounds = {
+      chime: 'https://assets.mixkit.co/active_storage/sfx/2568/2568-preview.mp3',
+      bell: 'https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3',
+      digital: 'https://assets.mixkit.co/active_storage/sfx/235/235-preview.mp3'
+    }
+    audioRef.current = new Audio(sounds[soundTheme])
+    audioRef.current.play().catch(() => {})
+  }
+
+  // Voice
+  const speakText = (text) => {
     if ('speechSynthesis' in window) {
       window.speechSynthesis.cancel()
       const utterance = new SpeechSynthesisUtterance(text)
       utterance.rate = 0.9
-      speechSynthesis.speak(utterance)
+      window.speechSynthesis.speak(utterance)
     }
   }
 
-  useEffect(() => {
-    if (showBreakModal && currentRoutine.length > 0) {
-      speak(`Stretch ${currentStretchIndex + 1}. ${currentRoutine[currentStretchIndex].instruction}`)
+  // Notifications
+  const showNotification = (type) => {
+    if ('Notification' in window && Notification.permission === 'granted') {
+      new Notification(`Time for a ${type} break!`, {
+        body: 'Click to start your stretch routine',
+        icon: '/vite.svg'
+      })
     }
-  }, [showBreakModal, currentStretchIndex, currentRoutine])
+  }
 
+  const requestNotificationPermission = async () => {
+    if ('Notification' in window) {
+      await Notification.requestPermission()
+    }
+    setShowSetup(false)
+    setIsRunning(true)
+  }
+
+  // Break actions
   const handleComplete = () => {
-    const newCompleted = completed + 1
-    setCompleted(newCompleted)
-    localStorage.setItem('completed', newCompleted)
-    setShowBreakModal(false)
-    window.speechSynthesis.cancel()
+    const newStats = {...stats, completed: stats.completed + 1 }
+    setStats(newStats)
+    updateWeeklyData(newStats)
+    nextStretch()
   }
 
   const handleSkip = () => {
-    const newSkipped = skipped + 1
-    setSkipped(newSkipped)
-    localStorage.setItem('skipped', newSkipped)
-    setShowBreakModal(false)
-    window.speechSynthesis.cancel()
-  }
-
-  const nextStretch = () => {
-    if (currentStretchIndex < currentRoutine.length - 1) {
-      setCurrentStretchIndex(currentStretchIndex + 1)
-    } else {
-      handleComplete()
-    }
+    const newStats = {...stats, skipped: stats.skipped + 1 }
+    setStats(newStats)
+    updateWeeklyData(newStats)
+    nextStretch()
   }
 
   const handleSnooze = () => {
-    setIsSnoozed(true)
-    setSnoozeTimeLeft(5 * 60)
     setShowBreakModal(false)
-    window.speechSynthesis.cancel()
+    setTimeout(() => setPostureTime(300), 100) // 5min snooze
   }
 
-  // #11 Export CSV
+  const nextStretch = () => {
+    const allStretches = [...stretches,...customStretches]
+    if (currentStretch < 2) {
+      const next = currentStretch + 1
+      setCurrentStretch(next)
+      speakText(allStretches[next]?.instruction || 'Next stretch')
+    } else {
+      setShowBreakModal(false)
+    }
+  }
+
+  // Weekly data
+  const updateWeeklyData = (newStats) => {
+    const today = new Date().toLocaleDateString('en-US', { weekday: 'short' })
+    const existing = weeklyData.find(d => d.day === today)
+    if (existing) {
+      setWeeklyData(weeklyData.map(d =>
+        d.day === today? {...d, completed: newStats.completed, skipped: newStats.skipped } : d
+      ))
+    } else {
+      setWeeklyData([...weeklyData.slice(-6), {
+        day: today,
+        completed: newStats.completed,
+        skipped: newStats.skipped
+      }])
+    }
+  }
+
+  // Export CSV
   const exportCSV = () => {
-    let csv = 'Day,Completed,Skipped\n'
-    weeklyData.labels.forEach((day, i) => {
-      csv += `${day},${weeklyData.completed[i]},${weeklyData.skipped[i]}\n`
-    })
+    const csv = [
+      ['Date', 'Completed', 'Skipped', 'Score'],
+      [new Date().toLocaleDateString(), stats.completed, stats.skipped, complianceScore],
+     ...weeklyData.map(d => [d.day, d.completed, d.skipped, ''])
+    ].map(row => row.join(',')).join('\n')
+
     const blob = new Blob([csv], { type: 'text/csv' })
-    const url = window.URL.createObjectURL(blob)
+    const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
     a.download = 'posture-stats.csv'
     a.click()
   }
 
-  // #19 Calendar Sync - Generate.ics file
-  const downloadCalendar = () => {
-    const icsContent = `BEGIN:VCALENDAR
+  // Add to calendar
+  const addToCalendar = () => {
+    const ics = `BEGIN:VCALENDAR
 VERSION:2.0
-PRODID:-//Posture App//EN
 BEGIN:VEVENT
-SUMMARY:Posture Break
+SUMMARY:Posture Break Reminder
 DTSTART:${new Date().toISOString().replace(/[-:]/g, '').split('.')[0]}Z
-DURATION:PT5M
-RRULE:FREQ=DAILY;BYHOUR=${startTime.split(':')[0]};BYMINUTE=${startTime.split(':')[1]};INTERVAL=${postureInterval}
-DESCRIPTION:Time for your posture stretch routine
+DTEND:${new Date(Date.now() + 1800000).toISOString().replace(/[-:]/g, '').split('.')[0]}Z
+RRULE:FREQ=DAILY;INTERVAL=1
+DESCRIPTION:Time for your posture and eye break
 END:VEVENT
 END:VCALENDAR`
-    const blob = new Blob([icsContent], { type: 'text/calendar' })
-    const url = window.URL.createObjectURL(blob)
+    const blob = new Blob([ics], { type: 'text/calendar' })
+    const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
     a.download = 'posture-breaks.ics'
     a.click()
   }
 
-  // #21 Add Custom Stretch
-  const addCustomStretch = () => {
-    if (newStretch.name && newStretch.instruction) {
-      setCustomStretches([...customStretches, {
-       ...newStretch,
-        id: Date.now(),
-        gif: 'https://media.giphy.com/media/3o7btPCcdNniyf0ArS/giphy.gif',
-        category: 'Custom'
-      }])
-      setNewStretch({ name: '', instruction: '', duration: 10 })
-      setShowAddStretch(false)
+  // Custom stretch
+  const addCustomStretch = (e) => {
+    e.preventDefault()
+    const form = e.target
+    const newStretch = {
+      name: form.name.value,
+      instruction: form.instruction.value,
+      gif: form.gif.value || 'https://media.giphy.com/media/3o7TKSjRrfIPjeiVyM/giphy.gif'
     }
+    setCustomStretches([...customStretches, newStretch])
+    setShowCustomForm(false)
+    form.reset()
   }
-
-  const completeSetup = () => {
-    setShowSetup(false)
-    localStorage.setItem('hasSetup', 'true')
-    requestNotification()
-  }
-
-  const total = completed + skipped
-  const dailyScore = total === 0? 100 : Math.round((completed / total) * 100)
 
   const formatTime = (seconds) => {
     const mins = Math.floor(seconds / 60)
     const secs = seconds % 60
-    return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`
+    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`
   }
 
+  const allStretches = [...stretches,...customStretches]
+
+  // Chart data
   const chartData = {
-    labels: weeklyData.labels,
+    labels: weeklyData.map(d => d.day),
     datasets: [
-      { label: 'Completed', data: weeklyData.completed, backgroundColor: '#4CAF50' },
-      { label: 'Skipped', data: weeklyData.skipped, backgroundColor: '#f44336' },
-    ],
-  }
-
-  const chartOptions = {
-    responsive: true,
-    plugins: {
-      legend: { labels: { color: darkMode? '#fff' : '#000' } },
-      title: { display: true, text: 'Weekly Progress', color: darkMode? '#fff' : '#000' },
-    },
-    scales: {
-      y: { ticks: { color: darkMode? '#fff' : '#000' }, grid: { color: darkMode? '#333' : '#ddd' } },
-      x: { ticks: { color: darkMode? '#fff' : '#000' }, grid: { color: darkMode? '#333' : '#ddd' } }
-    }
+      {
+        label: 'Completed',
+        data: weeklyData.map(d => d.completed),
+        backgroundColor: '#10b981'
+      },
+      {
+        label: 'Skipped',
+        data: weeklyData.map(d => d.skipped),
+        backgroundColor: '#ef4444'
+      }
+    ]
   }
 
   return (
     <div className={`app ${darkMode? 'dark' : 'light'}`}>
       <div className="header">
         <h1>Posture & Break Reminder</h1>
-        <button onClick={() => setDarkMode(!darkMode)} className="theme-toggle">
+        <button
+          onClick={() => setDarkMode(!darkMode)}
+          className="theme-toggle"
+          aria-label="Toggle theme"
+        >
           {darkMode? '☀️' : '🌙'}
         </button>
       </div>
 
-      <div className="score">Daily Score: {dailyScore}/100 {streak > 0 && `🔥 ${streak} day streak`}</div>
-      <div className="stats">Completed: {completed} | Skipped: {skipped}</div>
-      {!isWithinHours && <div className="out-of-hours">Outside working hours: {startTime} - {endTime}</div>}
+      <div className="score">Daily Score: {complianceScore}/100</div>
+      <div className="streak">
+        {stats.streak > 0 && `🔥 ${stats.streak} day streak`}
+        <span className="stats-inline">Completed: {stats.completed} | Skipped: {stats.skipped}</span>
+      </div>
+
       <div className="tip">💡 Daily Tip: {dailyTip}</div>
 
-      <button onClick={() => setShowSettings(!showSettings)} className="settings-toggle">
+      {!isWorkingHours() && (
+        <div className="warning">Outside working hours: {workingHours.start} - {workingHours.end}</div>
+      )}
+
+      <button onClick={() => setShowSettings(!showSettings)} className="settings-btn">
         {showSettings? 'Hide Settings' : 'Show Settings'}
       </button>
 
       {showSettings && (
         <div className="settings">
-          <label>Posture Break:
-            <select value={postureInterval} onChange={e => setPostureInterval(e.target.value)} disabled={isRunning}>
-              <option value="30">30 min</option>
-              <option value="45">45 min</option>
-              <option value="60">60 min</option>
+          <div className="setting">
+            <label>Posture Break (min)</label>
+            <select value={postureInterval} onChange={(e) => setPostureInterval(Number(e.target.value))}>
+              <option value={20}>20</option>
+              <option value={30}>30</option>
+              <option value={45}>45</option>
+              <option value={60}>60</option>
             </select>
-          </label>
-          <label>Eye Break:
-            <select value={eyeInterval} onChange={e => setEyeInterval(e.target.value)} disabled={isRunning}>
-              <option value="20">20 min</option>
-              <option value="30">30 min</option>
+          </div>
+          <div className="setting">
+            <label>Eye Break (min)</label>
+            <select value={eyeInterval} onChange={(e) => setEyeInterval(Number(e.target.value))}>
+              <option value={10}>10</option>
+              <option value={20}>20</option>
+              <option value={30}>30</option>
             </select>
-          </label>
-          <label>Start:
-            <input type="time" value={startTime} onChange={e => setStartTime(e.target.value)} disabled={isRunning} />
-          </label>
-          <label>End:
-            <input type="time" value={endTime} onChange={e => setEndTime(e.target.value)} disabled={isRunning} />
-          </label>
-          <label>Sound:
-            <select value={soundTheme} onChange={e => setSoundTheme(e.target.value)}>
+          </div>
+          <div className="setting">
+            <label>Working Hours</label>
+            <div className="time-inputs">
+              <input type="time" value={workingHours.start} onChange={(e) => setWorkingHours({...workingHours, start: e.target.value})} />
+              <span>to</span>
+              <input type="time" value={workingHours.end} onChange={(e) => setWorkingHours({...workingHours, end: e.target.value})} />
+            </div>
+          </div>
+          <div className="setting">
+            <label>Sound Theme</label>
+            <select value={soundTheme} onChange={(e) => setSoundTheme(e.target.value)}>
               <option value="chime">Chime</option>
               <option value="bell">Bell</option>
-              <option value="beep">Beep</option>
+              <option value="digital">Digital</option>
             </select>
-          </label>
-          <label className="checkbox-label">
-            <input type="checkbox" checked={smartPause} onChange={e => setSmartPause(e.target.checked)} />
-            Smart Pause if inactive 5min
-          </label>
+          </div>
+          <div className="setting">
+            <label>
+              <input type="checkbox" checked={smartPause} onChange={(e) => setSmartPause(e.target.checked)} />
+              Smart Pause if inactive 5min
+            </label>
+          </div>
         </div>
       )}
 
       <div className="timers">
-        <div className="timer">
-          <div className="time">{formatTime(postureTime)}</div>
-          <p>Next posture break</p>
+        <div className="timer-card">
+          <div className="timer-value">{formatTime(postureTime)}</div>
+          <div className="timer-label">Next posture break</div>
         </div>
-        <div className="timer">
-          <div className="time">{formatTime(eyeTime)}</div>
-          <p>Next 20-20-20 eye break</p>
+        <div className="timer-card">
+          <div className="timer-value">{formatTime(eyeTime)}</div>
+          <div className="timer-label">Next 20-20-20 eye break</div>
         </div>
       </div>
 
-      {isSnoozed && <div className="snoozed">Snoozed for {formatTime(snoozeTimeLeft)}...</div>}
-
-      <div className="controls">
-        <button onClick={() => setIsRunning(!isRunning)} className="start" disabled={!isWithinHours}>
+      <div className="actions">
+        <button onClick={() => setIsRunning(!isRunning)} className="btn-primary">
           {isRunning? 'Pause' : 'Start'}
         </button>
-        <button onClick={() => setShowSetup(true)} className="setup">Setup Guide</button>
-        <button onClick={() => setShowStats(!showStats)} className="stats-btn">Weekly Stats</button>
-        <button onClick={exportCSV} className="export-btn">Export CSV</button>
-        <button onClick={downloadCalendar} className="export-btn">Add to Calendar</button>
-        <button onClick={() => setShowAddStretch(true)} className="export-btn">+ Custom Stretch</button>
+        <button onClick={() => setShowSetup(true)} className="btn-secondary">Setup Guide</button>
+        <button onClick={() => setShowStats(!showStats)} className="btn-secondary">Weekly Stats</button>
+        <button onClick={exportCSV} className="btn-secondary">Export CSV</button>
+      </div>
+
+      <div className="actions">
+        <button onClick={addToCalendar} className="btn-orange">Add to Calendar</button>
+        <button onClick={() => setShowCustomForm(true)} className="btn-orange">+ Custom Stretch</button>
       </div>
 
       {showStats && (
         <div className="chart-container">
-          <Bar data={chartData} options={chartOptions} />
+          <Bar data={chartData} options={{ responsive: true, maintainAspectRatio: true }} />
+        </div>
+      )}
+
+      {showBreakModal && (
+        <div className="modal-overlay">
+          <div className="modal">
+            <h2>Break Time! Stretch {currentStretch + 1} of 3</h2>
+            <img src={allStretches[currentStretch]?.gif} alt="stretch" className="stretch-gif" />
+            <p className="instruction">{allStretches[currentStretch]?.instruction}</p>
+            <div className="modal-actions">
+              <button onClick={handleComplete} className="btn-success">Complete</button>
+              <button onClick={handleSkip} className="btn-warning">Skip</button>
+              <button onClick={handleSnooze} className="btn-secondary">Snooze 5min</button>
+            </div>
+          </div>
         </div>
       )}
 
       {showSetup && (
-        <div className="break-modal">
-          <div className="break-content">
-            <h2>Welcome! Let's set up</h2>
-            <p>1. Allow notifications so we can remind you</p>
-            <p>2. Set your working hours in Settings</p>
-            <p>3. Choose how often you want breaks</p>
-            <p>4. Click Start when ready</p>
-            <button onClick={completeSetup} className="next-btn">Enable Notifications & Start</button>
+        <div className="modal-overlay">
+          <div className="modal">
+            <h2>Welcome to Posture & Break Reminder</h2>
+            <p>We'll send notifications when it's time to stretch and rest your eyes.</p>
+            <p>Enable notifications to get started:</p>
+            <button onClick={requestNotificationPermission} className="btn-primary">
+              Enable Notifications & Start
+            </button>
           </div>
         </div>
       )}
 
-      {showAddStretch && (
-        <div className="break-modal">
-          <div className="break-content">
+      {showCustomForm && (
+        <div className="modal-overlay">
+          <div className="modal">
             <h2>Add Custom Stretch</h2>
-            <input
-              type="text"
-              placeholder="Stretch name"
-              value={newStretch.name}
-              onChange={e => setNewStretch({...newStretch, name: e.target.value})}
-              className="stretch-input"
-            />
-            <textarea
-              placeholder="Instructions"
-              value={newStretch.instruction}
-              onChange={e => setNewStretch({...newStretch, instruction: e.target.value})}
-              className="stretch-input"
-            />
-            <label>Duration (seconds):
-              <input
-                type="number"
-                value={newStretch.duration}
-                onChange={e => setNewStretch({...newStretch, duration: parseInt(e.target.value)})}
-                className="stretch-input"
-              />
-            </label>
-            <div className="break-controls">
-              <button onClick={addCustomStretch} className="next-btn">Save Stretch</button>
-              <button onClick={() => setShowAddStretch(false)} className="skip-btn">Cancel</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {showBreakModal && currentRoutine.length > 0 && (
-        <div className="break-modal">
-          <div className="break-content">
-            <h2>Break Time! {currentStretchIndex + 1}/3</h2>
-            <h3>{currentRoutine[currentStretchIndex].name}</h3>
-            <span className="category">{currentRoutine[currentStretchIndex].category}</span>
-            <img src={currentRoutine[currentStretchIndex].gif} alt="Stretch demo" className="stretch-gif" />
-            <p className="instruction">{currentRoutine[currentStretchIndex].instruction}</p>
-            <p className="duration">Hold for {currentRoutine[currentStretchIndex].duration}s</p>
-            <div className="break-controls">
-              <button onClick={nextStretch} className="next-btn">
-                {currentStretchIndex < 2? 'Next Stretch →' : 'Done ✓'}
-              </button>
-              <button onClick={handleSnooze} className="snooze-btn">Snooze 5min</button>
-              <button onClick={handleSkip} className="skip-btn">Skip ✗</button>
-            </div>
+            <form onSubmit={addCustomStretch}>
+              <input name="name" placeholder="Stretch name" required />
+              <textarea name="instruction" placeholder="Instructions" required rows="3" />
+              <input name="gif" placeholder="GIF URL (optional)" />
+              <div className="modal-actions">
+                <button type="submit" className="btn-primary">Add Stretch</button>
+                <button type="button" onClick={() => setShowCustomForm(false)} className="btn-secondary">Cancel</button>
+              </div>
+            </form>
           </div>
         </div>
       )}
