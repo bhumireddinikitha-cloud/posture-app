@@ -497,3 +497,5 @@ END:VCALENDAR`
       )}
     </div>
   )
+}
+export default App
