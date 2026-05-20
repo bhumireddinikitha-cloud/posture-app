@@ -6,6 +6,43 @@ import './App.css'
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend)
 
+// Circular progress ring component
+function ProgressRing({ score, maxScore }) {
+  const radius = 55
+  const stroke = 10
+  const normalizedRadius = radius - stroke / 2
+  const circumference = normalizedRadius * 2 * Math.PI
+  const strokeDashoffset = circumference - (score / maxScore) * circumference
+
+  return (
+    <svg height={radius * 2} width={radius * 2}>
+      <circle
+        stroke="var(--bg-secondary)"
+        fill="transparent"
+        strokeWidth={stroke}
+        r={normalizedRadius}
+        cx={radius}
+        cy={radius}
+      />
+      <circle
+        stroke={score >= 80? "#4ade80" : score >= 50? "#facc15" : "#ef4444"}
+        fill="transparent"
+        strokeWidth={stroke}
+        strokeDasharray={circumference + ' + circumference}
+        style={{ strokeDashoffset, transition: 'stroke-dashoffset 0.5s' }}
+        strokeLinecap="round"
+        r={normalizedRadius}
+        cx={radius}
+        cy={radius}
+        transform={`rotate(-90 ${radius} ${radius})`}
+      />
+      <text x="50%" y="50%" textAnchor="middle" dy=".3em" fontSize="22" fontWeight="700" fill="var(--text-primary)">
+        {score}
+      </text>
+    </svg>
+  )
+}
+
 function App() {
   // Core state
   const [postureInterval, setPostureInterval] = useState(30)
@@ -41,15 +78,17 @@ function App() {
   const lastActiveRef = useRef(Date.now())
   const audioRef = useRef(null)
 
-  // Daily tips
+  // Daily tips - now with actionable stretches
   const tips = [
     "Keep monitor at arm's length and top at eye level",
     "Feet flat on floor, knees at 90 degrees",
-    "Avoid phone between ear and shoulder",
+    "20-20-20 Rule: Every 20 min, look 20 ft away for 20 sec",
     "Stand up and move every 30 minutes",
     "Blink often to prevent dry eyes",
     "Use a headset for long calls",
-    "Keep wrists straight while typing"
+    "Keep wrists straight while typing",
+    "Quick stretch: Roll shoulders back 5 times",
+    "Quick stretch: Neck tilt left/right, hold 5 sec each"
   ]
   const [dailyTip] = useState(tips[Math.floor(Math.random() * tips.length)])
 
@@ -191,7 +230,7 @@ function App() {
       digital: 'https://assets.mixkit.co/active_storage/sfx/235/235-preview.mp3'
     }
     audioRef.current = new Audio(sounds[soundTheme])
-    audioRef.current.play().catch(() => {})
+    audioRef.current.play().catch(() => { })
   }
 
   // Voice
@@ -347,8 +386,8 @@ END:VCALENDAR`
 
   return (
     <div className={`app ${darkMode? 'dark' : 'light'}`}>
-      <div className="header" style={{display: 'flex', justifyContent: 'space-between', width: '100%', maxWidth: '600px', marginBottom: '2rem'}}>
-        <h1 style={{fontSize: '1.8rem', margin: 0, color: darkMode? '#f9fafb' : '#111827'}}>
+      <div className="header" style={{ display: 'flex', justifyContent: 'space-between', width: '100%', maxWidth: '600px', marginBottom: '2rem' }}>
+        <h1 style={{ fontSize: '1.8rem', margin: 0, color: darkMode? '#f9fafb' : '#111827' }}>
           Posture & Break Reminder
         </h1>
         <button
@@ -360,7 +399,11 @@ END:VCALENDAR`
         </button>
       </div>
 
-      <div className="score">Daily Score: {complianceScore}/100</div>
+      {/* Progress Ring replaces text score */}
+      <div className="score">
+        <ProgressRing score={complianceScore} maxScore={100} />
+      </div>
+
       <div className="streak">
         {stats.streak > 0 && `🔥 ${stats.streak} day streak`}
         <span className="stats-inline">Completed: {stats.completed} | Skipped: {stats.skipped}</span>
@@ -398,9 +441,9 @@ END:VCALENDAR`
           <div className="setting">
             <label>Working Hours</label>
             <div className="time-inputs">
-              <input type="time" value={workingHours.start} onChange={(e) => setWorkingHours({...workingHours, start: e.target.value})} />
+              <input type="time" value={workingHours.start} onChange={(e) => setWorkingHours({...workingHours, start: e.target.value })} />
               <span>to</span>
-              <input type="time" value={workingHours.end} onChange={(e) => setWorkingHours({...workingHours, end: e.target.value})} />
+              <input type="time" value={workingHours.end} onChange={(e) => setWorkingHours({...workingHours, end: e.target.value })} />
             </div>
           </div>
           <div className="setting">
@@ -432,7 +475,7 @@ END:VCALENDAR`
       </div>
 
       <div className="actions">
-        <button onClick={() => setIsRunning(!isRunning)} className="btn-primary">
+        <button onClick={() => setIsRunning(!isRunning)} className="btn-primary primary">
           {isRunning? 'Pause' : 'Start'}
         </button>
         <button onClick={() => setShowSetup(true)} className="btn-secondary">Setup Guide</button>
@@ -472,7 +515,7 @@ END:VCALENDAR`
             <h2>Welcome to Posture & Break Reminder</h2>
             <p>We'll send notifications when it's time to stretch and rest your eyes.</p>
             <p>Enable notifications to get started:</p>
-            <button onClick={requestNotificationPermission} className="btn-primary">
+            <button onClick={requestNotificationPermission} className="btn-primary primary">
               Enable Notifications & Start
             </button>
           </div>
@@ -488,7 +531,7 @@ END:VCALENDAR`
               <textarea name="instruction" placeholder="Instructions" required rows="3" />
               <input name="gif" placeholder="GIF URL (optional)" />
               <div className="modal-actions">
-                <button type="submit" className="btn-primary">Add Stretch</button>
+                <button type="submit" className="btn-primary primary">Add Stretch</button>
                 <button type="button" onClick={() => setShowCustomForm(false)} className="btn-secondary">Cancel</button>
               </div>
             </form>
